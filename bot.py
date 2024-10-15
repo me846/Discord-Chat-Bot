@@ -37,25 +37,7 @@ async def reload(ctx, extension):
     await bot.reload_extension(f'cogs.{extension}')
     await ctx.send(f'Re - Loaded {extension} done.')
 
-<<<<<<< HEAD
 if __name__ == '__main__':
     server_thread()
-=======
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is running"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    server = Thread(target=run)
-    server.start()
-
-if __name__ == '__main__':
-    keep_alive()
->>>>>>> add9701c1997da7928b2c874b055f4c03e591f49
     bot.run(os.getenv('BOT_TOKEN'))
 
