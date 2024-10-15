@@ -40,7 +40,6 @@ async def reload(ctx, extension):
     await bot.reload_extension(f'cogs.{extension}')
     await ctx.send(f'Re - Loaded {extension} done.')
 
-# Flask app for health check
 app = Flask('')
 
 @app.route('/')
@@ -55,5 +54,6 @@ def keep_alive():
     server.start()
 
 if __name__ == '__main__':
-    keep_alive()  # Start the health check server
+    keep_alive()
     bot.run(os.getenv('BOT_TOKEN'))
+
