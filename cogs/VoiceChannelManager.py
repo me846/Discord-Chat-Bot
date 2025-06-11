@@ -118,8 +118,14 @@ class VoiceChannelManagerCog(commands.Cog):
                 self.private_channels[voice_channel_id] = str(private_channel.id)
                 self.save_private_channels()
         else:
-            # テキストチャンネルが存在しない場合は新たに作成
-            private_channel = await self.create_private_text_channel(guild, channel, member)
+            name = self.sanitize_channel_name(channel.name)
+            # 同じカテゴリで名前が一致するテキストチャンネルを検索
+            private_channel = discord.utils.get(
+                guild.text_channels, name=name, category=channel.category
+            )
+            if private_channel is None:
+                # 見つからなければ新規作成
+                private_channel = await self.create_private_text_channel(guild, channel, member)
             self.private_channels[voice_channel_id] = str(private_channel.id)
             self.save_private_channels()
 
