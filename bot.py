@@ -41,14 +41,15 @@ DEFAULT_GREETINGS = [
 ]
 
 
-def sanitize_channel_name(name):
+def sanitize_channel_name(name, voice_channel_id=None):
     name = name.strip()
     name = name.replace(" ", "-")
-    name = re.sub(r'[^a-zA-Z0-9\-_]', '', name)
     name = re.sub(r'-+', '-', name)
     name = name.strip('-')
     name = name[:100]
-    if not name:
+    if not name and voice_channel_id:
+        name = f"vc-{voice_channel_id}"
+    elif not name:
         name = f"vc-{int(time.time())}"
     return name.lower()
 
@@ -68,7 +69,7 @@ async def send_greeting(member, text_channel):
 
 
 async def create_private_text_channel(guild, voice_channel, member):
-    sanitized_name = sanitize_channel_name(voice_channel.name)
+    sanitized_name = sanitize_channel_name(voice_channel.name, voice_channel.id)
     
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -146,7 +147,7 @@ async def handle_user_join(member, voice_channel):
                 text_channel = None
         
         if text_channel is None:
-            sanitized_name = sanitize_channel_name(voice_channel.name)
+            sanitized_name = sanitize_channel_name(voice_channel.name, voice_channel.id)
             
             await guild.fetch_channels()
             
