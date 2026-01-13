@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+import asyncio
 import random
 import os
 import json
@@ -25,6 +26,7 @@ class VoiceChannelManagerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.private_channels = {}  # {voice_channel_id: text_channel_id}
+        self.channel_locks = {}  # {voice_channel_id: asyncio.Lock}
         self.load_private_channels()
         self.specific_member_greetings = {}
         init_db()
@@ -107,32 +109,63 @@ class VoiceChannelManagerCog(commands.Cog):
     async def handle_user_join(self, member, channel):
         guild = channel.guild
         voice_channel_id = str(channel.id)
-        text_channel_id = self.private_channels.get(voice_channel_id)
+        
+        # ボイスチャンネルごとのロックを取得または作成
+        if voice_channel_id not in self.channel_locks:
+            self.channel_locks[voice_channel_id] = asyncio.Lock()
+        
+        # ロックを取得して、同時処理を防ぐ
+        async with self.channel_locks[voice_channel_id]:
+            text_channel_id = self.private_channels.get(voice_channel_id)
 
-        if text_channel_id:
-            # テキストチャンネルが既に存在する場合
-            private_channel = guild.get_channel(int(text_channel_id))
-            if not private_channel:
-                # テキストチャンネルが削除されている場合は新たに作成
-                private_channel = await self.create_private_text_channel(guild, channel, member)
+            if text_channel_id:
+                # メモリキャッシュにテキストチャンネルIDが存在する場合
+                private_channel = guild.get_channel(int(text_channel_id))
+                if not private_channel:
+                    # テキストチャンネルが削除されている場合は新たに作成
+                    private_channel = await self.create_private_text_channel(guild, channel, member)
+                    self.private_channels[voice_channel_id] = str(private_channel.id)
+                    self.save_private_channels()
+            else:
+                # メモリキャッシュにない場合、ギルド内を検索
+                name = self.sanitize_channel_name(channel.name)
+                
+                # 同じカテゴリで名前が一致するテキストチャンネルを検索
+                private_channel = discord.utils.get(
+                    guild.text_channels, name=name, category=channel.category
+                )
+                
+                # 見つからない場合、過去の-private付きも検索（後方互換性）
+                if private_channel is None:
+                    private_channel = discord.utils.get(
+                        guild.text_channels, name=f"{name}-private", category=channel.category
+                    )
+                
+                if private_channel is None:
+                    # 見つからない場合、作成直前に再度確認（他の処理が先に作成した可能性）
+                    await asyncio.sleep(0.1)  # 僅かな待機で他の処理の完了を待つ
+                    private_channel = discord.utils.get(
+                        guild.text_channels, name=name, category=channel.category
+                    )
+                    
+                    # それでも見つからない場合、-private付きも再確認
+                    if private_channel is None:
+                        private_channel = discord.utils.get(
+                            guild.text_channels, name=f"{name}-private", category=channel.category
+                        )
+                    
+                    if private_channel is None:
+                        # それでも見つからなければ新規作成（-privateなし）
+                        private_channel = await self.create_private_text_channel(guild, channel, member)
+                
+                # メモリキャッシュに登録
                 self.private_channels[voice_channel_id] = str(private_channel.id)
                 self.save_private_channels()
-        else:
-            name = self.sanitize_channel_name(channel.name)
-            # 同じカテゴリで名前が一致するテキストチャンネルを検索
-            private_channel = discord.utils.get(
-                guild.text_channels, name=name, category=channel.category
-            )
-            if private_channel is None:
-                # 見つからなければ新規作成
-                private_channel = await self.create_private_text_channel(guild, channel, member)
-            self.private_channels[voice_channel_id] = str(private_channel.id)
-            self.save_private_channels()
 
-        if private_channel:
-            await private_channel.set_permissions(member, read_messages=True, send_messages=True)
-            if not member.bot:
-                await self.send_greeting(member, private_channel)
+            if private_channel:
+                await private_channel.set_permissions(member, read_messages=True, send_messages=True)
+                if not member.bot:
+                    await self.send_greeting(member, private_channel)
 
     async def create_private_text_channel(self, guild, voice_channel, member):
         overwrites = {
